@@ -21,12 +21,39 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pytest -v
 
-      - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push to both registries
         run: |
-          IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:latest
-          docker build -t $IMAGE .
-          docker push $IMAGE
-          echo "Published: $IMAGE" >> $GITHUB_STEP_SUMMARY
+          DOCKERHUB_IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/simple-devops
+          GHCR_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}
+          SHA=$(echo $GITHUB_SHA | cut -c1-7)
+
+          docker build \
+            -t $DOCKERHUB_IMAGE:latest \
+            -t $DOCKERHUB_IMAGE:$SHA \
+            -t $GHCR_IMAGE:latest \
+            -t $GHCR_IMAGE:$SHA .
+
+          docker push $DOCKERHUB_IMAGE:latest
+          docker push $DOCKERHUB_IMAGE:$SHA
+          docker push $GHCR_IMAGE:latest
+          docker push $GHCR_IMAGE:$SHA
+
+          {
+            echo "### Images published"
+            echo "- docker.io/$DOCKERHUB_IMAGE:latest"
+            echo "- docker.io/$DOCKERHUB_IMAGE:$SHA"
+            echo "- $GHCR_IMAGE:latest"
+          } >> $GITHUB_STEP_SUMMARYY
